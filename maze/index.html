@@ -1,0 +1,1049 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#121418">
+<title>미로 탈출 3D</title>
+<style>
+  :root {
+    --bg: #121418;
+    --panel: #1d2128;
+    --text: #ecebe7;
+    --muted: #9a9890;
+    --accent: #f2b544;
+    --danger: #ff4d4d;
+    --exit: #3cffb0;
+    --shadow: 0 8px 30px rgba(0,0,0,.5);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", "Malgun Gothic", "Apple SD Gothic Neo", sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100vh;
+    height: 100dvh;
+    padding: 14px;
+    padding-top: max(14px, env(safe-area-inset-top));
+    padding-bottom: max(14px, env(safe-area-inset-bottom));
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  h1 { font-size: 1.4rem; margin: 0 0 10px; letter-spacing: -.02em; }
+  .bar {
+    width: 100%;
+    max-width: 1000px;
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+  }
+  .levels, .tools { display: flex; gap: 6px; align-items: center; }
+  .levels button, .btn {
+    border: 2px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    font: inherit;
+    font-weight: 600;
+    padding: 6px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .levels button.active, .btn.primary, .btn.on { background: var(--accent); color: var(--bg); }
+  .stats { font-variant-numeric: tabular-nums; color: var(--muted); white-space: nowrap; }
+  .stats b { color: var(--text); }
+
+  .board {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    max-width: 1000px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    background: #000;
+  }
+  #view {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    display: block;
+    image-rendering: pixelated;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  #mini {
+    position: absolute; top: 10px; right: 10px;
+    width: 140px; height: 140px;
+    border-radius: 8px;
+    background: rgba(0,0,0,.55);
+    pointer-events: none;
+  }
+  #mini.hide { display: none; }
+  .hud {
+    position: absolute; top: 10px; left: 10px;
+    display: flex; flex-direction: column; gap: 6px;
+    pointer-events: none;
+    font-weight: 700; font-size: .9rem;
+    text-shadow: 0 1px 2px #000;
+  }
+  .hp { display: flex; align-items: center; gap: 6px; }
+  .hpbar { width: 120px; height: 12px; border-radius: 6px; background: rgba(0,0,0,.55); border: 1px solid rgba(255,255,255,.3); overflow: hidden; }
+  .hpbar i { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, #ff4d4d, #ff9a4d); transition: width .2s; }
+  .hud .sound { pointer-events: auto; align-self: flex-start; background: rgba(0,0,0,.45); border: none; color: #fff; border-radius: 8px; font-size: 1rem; padding: 3px 7px; cursor: pointer; }
+  .crosshair {
+    position: absolute; left: 50%; top: 50%;
+    width: 18px; height: 18px; margin: -9px 0 0 -9px;
+    pointer-events: none;
+  }
+  .crosshair::before, .crosshair::after {
+    content: ""; position: absolute; background: rgba(255,255,255,.7);
+  }
+  .crosshair::before { left: 8px; top: 0; width: 2px; height: 18px; }
+  .crosshair::after { top: 8px; left: 0; width: 18px; height: 2px; }
+  .crosshair.hit::before, .crosshair.hit::after { background: var(--danger); }
+  .toast {
+    position: absolute; left: 50%; top: 18%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,.65);
+    color: #fff;
+    padding: 8px 14px; border-radius: 999px;
+    font-size: .9rem; white-space: nowrap;
+    pointer-events: none;
+    transition: opacity .6s;
+  }
+  .toast.hide { opacity: 0; }
+  .joy {
+    position: absolute; width: 110px; height: 110px; margin: -55px 0 0 -55px;
+    border-radius: 50%; border: 2px solid rgba(255,255,255,.35);
+    background: rgba(255,255,255,.08);
+    pointer-events: none; display: none;
+  }
+  .joy .knob {
+    position: absolute; left: 50%; top: 50%;
+    width: 44px; height: 44px; margin: -22px 0 0 -22px;
+    border-radius: 50%; background: rgba(242,181,68,.75);
+  }
+  .joy.show { display: block; }
+
+  .controls { display: flex; gap: 18px; align-items: center; margin-top: 8px; }
+  .pad {
+    display: grid;
+    grid-template-columns: repeat(3, 60px);
+    grid-template-rows: repeat(2, 48px);
+    gap: 6px;
+  }
+  .pad button, .fire {
+    border: none; border-radius: 12px;
+    background: var(--panel); color: var(--text);
+    font-size: 1.3rem; cursor: pointer; touch-action: none;
+  }
+  .pad button.held { background: var(--accent); color: var(--bg); }
+  .pad .up { grid-column: 2; grid-row: 1; }
+  .pad .left { grid-column: 1; grid-row: 2; }
+  .pad .down { grid-column: 2; grid-row: 2; }
+  .pad .right { grid-column: 3; grid-row: 2; }
+  .fire {
+    width: 96px; height: 96px; border-radius: 50%;
+    background: #5a1d1d; color: #fff; font-weight: 800; font-size: 1rem;
+    box-shadow: inset 0 -4px 0 rgba(0,0,0,.35);
+  }
+  .fire.held { background: var(--danger); }
+  @media (hover: hover) and (pointer: fine) { .controls { display: none; } }
+
+  .hint { color: var(--muted); font-size: .85rem; margin: 8px 0 0; text-align: center; }
+
+  /* 휴대폰: 제목·안내 숨기고 화면을 꽉 채움 */
+  @media (max-width: 600px), (max-height: 600px) {
+    body { padding: 6px; padding-top: max(6px, env(safe-area-inset-top)); padding-bottom: max(6px, env(safe-area-inset-bottom)); }
+    h1, .hint, .btn .label { display: none; }
+    .bar { margin-bottom: 6px; gap: 4px; }
+    .levels, .tools { gap: 4px; }
+    .levels button, .bar .btn { padding: 5px 9px; font-size: .85rem; }
+    .stats { font-size: .85rem; }
+    .board { border-radius: 8px; }
+    #mini { width: 96px; height: 96px; top: 6px; right: 6px; }
+    .hud { top: 6px; left: 6px; font-size: .8rem; }
+    .hpbar { width: 90px; }
+  }
+
+  .overlay {
+    position: absolute; inset: 0;
+    background: rgba(0,0,0,.6);
+    display: none; align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  .overlay.show { display: flex; animation: fade .3s ease; }
+  .card {
+    background: var(--panel);
+    border-radius: 16px;
+    padding: 24px 22px;
+    text-align: center;
+    max-width: 320px; width: 100%;
+    box-shadow: var(--shadow);
+  }
+  .card .big { font-size: 2.6rem; line-height: 1; }
+  .card h2 { margin: 10px 0 6px; font-size: 1.35rem; }
+  .card p { margin: 4px 0; color: var(--muted); }
+  .card .time { font-size: 1.9rem; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; margin: 8px 0; }
+  .card .record { color: var(--accent); font-weight: 700; }
+  .card .btn { margin-top: 14px; padding: 10px 22px; }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+</style>
+</head>
+<body>
+  <h1>🔦 미로 탈출 3D</h1>
+
+  <div class="bar">
+    <div class="levels" role="group" aria-label="난이도">
+      <button data-level="easy">쉬움</button>
+      <button data-level="normal" class="active">보통</button>
+      <button data-level="hard">어려움</button>
+    </div>
+    <div class="stats">⏱ <b id="time">0.0</b>초</div>
+    <div class="tools">
+      <button class="btn on" id="mapBtn" aria-label="지도 켜기/끄기">🗺<span class="label"> 지도</span></button>
+      <button class="btn" id="newBtn" aria-label="새 미로">🔄<span class="label"> 새 미로</span></button>
+    </div>
+  </div>
+
+  <div class="board" id="board">
+    <canvas id="view"></canvas>
+    <canvas id="mini"></canvas>
+    <div class="hud">
+      <div class="hp">❤️ <div class="hpbar"><i id="hpFill"></i></div></div>
+      <div>👾 <span id="monLeft">0</span>마리 · 처치 <span id="kills">0</span></div>
+      <button class="sound" id="soundBtn" aria-label="소리 켜기/끄기">🔊</button>
+    </div>
+    <div class="crosshair" id="cross"></div>
+    <div class="joy" id="joy"><div class="knob" id="knob"></div></div>
+    <div class="toast" id="toast"></div>
+    <div class="overlay" id="overlay">
+      <div class="card">
+        <div class="big" id="bigIcon">🎉</div>
+        <h2 id="msg">축하합니다!</h2>
+        <p id="sub">미로를 탈출했어요</p>
+        <div class="time" id="finalTime">0.0초</div>
+        <p id="detail"></p>
+        <p class="record" id="record"></p>
+        <button class="btn primary" id="again">새 미로 도전</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="hint"><b>W</b> 앞 · <b>S</b> 뒤 · <b>A</b> 왼쪽 · <b>D</b> 오른쪽 · Q E 옆걸음 · <b>마우스 오른쪽 버튼</b> 발사(스페이스도 됨) · 마우스로 끌어도 이동 · <b>M</b> 지도 · <b>R</b> 새 미로</p>
+
+  <div class="controls">
+    <div class="pad">
+      <button class="up" data-dir="up" aria-label="앞으로">▲</button>
+      <button class="left" data-dir="left" aria-label="왼쪽으로 회전">⟲</button>
+      <button class="down" data-dir="down" aria-label="뒤로">▼</button>
+      <button class="right" data-dir="right" aria-label="오른쪽으로 회전">⟳</button>
+    </div>
+    <button class="fire" id="fireBtn" aria-label="발사">발사</button>
+  </div>
+
+<script>
+(() => {
+  // size = 미로 칸 수, mons = 몬스터 수, mhp = 몬스터 체력(맞혀야 하는 횟수)
+  // 벽돌 색: 쉬움=황토, 보통=붉은 벽돌, 어려움=검붉은 벽돌 / 몬스터 색도 난이도마다 다름
+  const LEVELS = {
+    easy:   { size: 6,  name: '쉬움',   mons: 3,  mhp: 2, mspeed: 1.0,  dmg: 8,
+              theme: { base: [196, 150, 96],  mortar: '#cfc3ad', ceil: ['#1b1712', '#3d3326'], floor: ['#4a3f31', '#15120e'] },
+              mcol: ['#7ddc5a', '#2f7a1f'] },
+    normal: { size: 10, name: '보통',   mons: 7,  mhp: 3, mspeed: 1.3,  dmg: 12,
+              theme: { base: [166, 70, 50],   mortar: '#b9ada0', ceil: ['#121418', '#2c3038'], floor: ['#3a3d42', '#0f1012'] },
+              mcol: ['#b57cff', '#4b2390'] },
+    hard:   { size: 15, name: '어려움', mons: 14, mhp: 3, mspeed: 1.6,  dmg: 15,
+              theme: { base: [104, 40, 34],   mortar: '#5a4f48', ceil: ['#0d0807', '#2a1612'], floor: ['#33201b', '#0a0605'] },
+              mcol: ['#ff8a3d', '#8a2a0a'] },
+  };
+  const CHEERS = ['축하합니다!', '탈출 성공!', '훌륭해요!', '길 찾기 달인!', '대단해요!'];
+  const TEX = 64;
+  const MOVE_SPEED = 2.4;   // 타일/초
+  const TURN_SPEED = 2.3;   // 라디안/초
+  const RADIUS = 0.22;      // 플레이어 몸 크기
+  const FOV_PLANE = 0.66;   // 시야각 약 66도
+  const FIRE_COOLDOWN = 0.32;
+  const CHASE_RANGE = 12;   // 이 거리(타일) 안이면 몬스터가 쫓아옴
+  const SHADES = 6;         // 몬스터 거리 명암 단계
+
+  const board = document.getElementById('board');
+  const view = document.getElementById('view');
+  const ctx = view.getContext('2d');
+  const mini = document.getElementById('mini');
+  const mctx = mini.getContext('2d');
+  const timeEl = document.getElementById('time');
+  const overlay = document.getElementById('overlay');
+  const toast = document.getElementById('toast');
+  const joyEl = document.getElementById('joy');
+  const knob = document.getElementById('knob');
+  const cross = document.getElementById('cross');
+  const hpFill = document.getElementById('hpFill');
+  const isTouch = matchMedia('(hover: none), (pointer: coarse)').matches;
+
+  let level = 'normal';
+  let showMap = true, soundOn = true;
+  let G, GW, GH, exitX, exitY, wallTex, exitTex, monTex, theme, L;
+  let posX, posY, dirX, dirY, planeX, planeY, bob, dist;
+  let seen, startTime, endTime, state;  // state: 'play' | 'won' | 'dead'
+  let hp, monsters, kills, field, fieldTimer;
+  let fireCd = 0, recoil = 0, flash = 0, hurtFlash = 0, hitMark = 0;
+  let zbuf = new Float32Array(1);
+
+  try {
+    const saved = localStorage.getItem('maze3d-level'); if (LEVELS[saved]) level = saved;
+    if (localStorage.getItem('maze3d-map') === '0') showMap = false;
+    if (localStorage.getItem('maze3d-sound') === '0') soundOn = false;
+  } catch (e) {}
+
+  // ---------- 효과음 (직접 합성) ----------
+  let actx = null;
+  function tone(type, f0, f1, dur, vol, delay = 0) {
+    if (!soundOn) return;
+    try {
+      actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+      if (actx.state === 'suspended') actx.resume();
+      const t = actx.currentTime + delay;
+      const o = actx.createOscillator(), g = actx.createGain();
+      o.type = type;
+      o.frequency.setValueAtTime(f0, t);
+      o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
+      g.gain.setValueAtTime(vol, t);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+      o.connect(g).connect(actx.destination);
+      o.start(t); o.stop(t + dur + 0.02);
+    } catch (e) {}
+  }
+  const SFX = {
+    shoot: () => { tone('square', 900, 120, 0.14, 0.09); tone('sawtooth', 300, 60, 0.1, 0.05); },
+    hit:   () => tone('sawtooth', 260, 90, 0.12, 0.12),
+    die:   () => { tone('triangle', 500, 40, 0.45, 0.18); tone('square', 120, 30, 0.35, 0.06, 0.05); },
+    hurt:  () => tone('sawtooth', 140, 70, 0.25, 0.16),
+    growl: () => tone('sawtooth', 90, 55, 0.4, 0.07),
+    win:   () => [523, 659, 784, 1047].forEach((f, i) => tone('triangle', f, f, 0.22, 0.12, i * 0.11)),
+    lose:  () => [392, 330, 262, 196].forEach((f, i) => tone('triangle', f, f * 0.98, 0.3, 0.12, i * 0.16)),
+  };
+
+  // ---------- 미로 생성 (깊이 우선 탐색) ----------
+  // 칸 사이 벽까지 타일로 표현: (2n+1)×(2n+1) 격자. 0=통로, 1=벽, 2=출구 벽
+  function generate(n) {
+    GW = GH = 2 * n + 1;
+    G = Array.from({ length: GH }, () => new Uint8Array(GW).fill(1));
+    const vis = Array.from({ length: n }, () => new Uint8Array(n));
+    const stack = [[0, 0]];
+    vis[0][0] = 1;
+    G[1][1] = 0;
+    while (stack.length) {
+      const [x, y] = stack[stack.length - 1];
+      const nb = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+        .map(([dx, dy]) => [x + dx, y + dy, dx, dy])
+        .filter(([nx, ny]) => nx >= 0 && ny >= 0 && nx < n && ny < n && !vis[ny][nx]);
+      if (!nb.length) { stack.pop(); continue; }
+      const [nx, ny, dx, dy] = nb[(Math.random() * nb.length) | 0];
+      G[2 * y + 1 + dy][2 * x + 1 + dx] = 0;
+      G[2 * ny + 1][2 * nx + 1] = 0;
+      vis[ny][nx] = 1;
+      stack.push([nx, ny]);
+    }
+    exitX = exitY = 2 * n - 1;
+    for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      if (G[exitY + dy][exitX + dx] === 1) G[exitY + dy][exitX + dx] = 2;
+    }
+  }
+
+  // 한 타일에서 모든 통로 타일까지의 걸음 수 (너비 우선 탐색)
+  function distField(sx, sy) {
+    const f = new Int16Array(GW * GH).fill(-1);
+    const q = [sy * GW + sx];
+    f[q[0]] = 0;
+    for (let i = 0; i < q.length; i++) {
+      const c = q[i], x = c % GW, y = (c / GW) | 0;
+      for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+        const nx = x + dx, ny = y + dy, nc = ny * GW + nx;
+        if (G[ny][nx] === 0 && f[nc] < 0) { f[nc] = f[c] + 1; q.push(nc); }
+      }
+    }
+    return f;
+  }
+
+  // ---------- 질감 만들기 (직접 그림) ----------
+  function makeWallTexture(t) {
+    const c = document.createElement('canvas');
+    c.width = c.height = TEX;
+    const g = c.getContext('2d');
+    g.fillStyle = t.mortar;
+    g.fillRect(0, 0, TEX, TEX);
+    // 벽돌: 가로 16px × 세로 8px, 한 줄씩 반 칸 엇갈려 쌓기
+    const BW = 16, BH = 8;
+    for (let row = 0; row < TEX / BH; row++) {
+      const off = row % 2 ? BW / 2 : 0;
+      for (let bx = -1; bx <= TEX / BW; bx++) {
+        const x = bx * BW + off + 1, y = row * BH + 1, w = BW - 2, h = BH - 2;
+        const j = (Math.random() - 0.5) * 36;
+        const [r, gg, b] = t.base.map(v => Math.max(0, Math.min(255, v + j)));
+        g.fillStyle = `rgb(${r},${gg},${b})`;
+        g.fillRect(x, y, w, h);
+        g.fillStyle = 'rgba(255,255,255,.18)';
+        g.fillRect(x, y, w, 1);
+        g.fillRect(x, y, 1, h);
+        g.fillStyle = 'rgba(0,0,0,.28)';
+        g.fillRect(x, y + h - 1, w, 1);
+        g.fillRect(x + w - 1, y, 1, h);
+      }
+    }
+    for (let i = 0; i < 260; i++) {
+      g.fillStyle = Math.random() < 0.6 ? 'rgba(0,0,0,.14)' : 'rgba(255,255,255,.06)';
+      g.fillRect((Math.random() * TEX) | 0, (Math.random() * TEX) | 0, 1, 1);
+    }
+    return c;
+  }
+
+  function makeExitTexture() {
+    const c = document.createElement('canvas');
+    c.width = c.height = TEX;
+    const g = c.getContext('2d');
+    const grd = g.createLinearGradient(0, 0, 0, TEX);
+    grd.addColorStop(0, '#0d4a37'); grd.addColorStop(1, '#06261c');
+    g.fillStyle = grd;
+    g.fillRect(0, 0, TEX, TEX);
+    g.strokeStyle = '#3cffb0';
+    g.lineWidth = 4;
+    g.strokeRect(4, 4, TEX - 8, TEX - 8);
+    g.fillStyle = '#c8ffe9';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.font = 'bold 17px "Malgun Gothic", "Apple SD Gothic Neo", sans-serif';
+    g.fillText('출구', TEX / 2, 26);
+    g.font = 'bold 12px sans-serif';
+    g.fillText('EXIT', TEX / 2, 44);
+    return c;
+  }
+
+  // 몬스터: 외눈 젤리 괴물. 프레임 2개(꿈틀) × 거리 명암 단계 + 맞았을 때 흰색 프레임
+  function makeMonsterTextures([light, dark]) {
+    function frame(squish, white) {
+      const c = document.createElement('canvas');
+      c.width = c.height = TEX;
+      const g = c.getContext('2d');
+      const cx = 32, by = 62, w = 26 + squish * 2, h = 40 - squish * 3;
+      // 몸통
+      const grd = g.createRadialGradient(cx - 6, by - h + 10, 4, cx, by - h / 2, h);
+      grd.addColorStop(0, white ? '#fff' : light);
+      grd.addColorStop(1, white ? '#ddd' : dark);
+      g.fillStyle = grd;
+      g.beginPath();
+      g.moveTo(cx - w, by);
+      g.quadraticCurveTo(cx - w - 2, by - h * 0.9, cx, by - h);
+      g.quadraticCurveTo(cx + w + 2, by - h * 0.9, cx + w, by);
+      // 아래쪽 물결 다리
+      for (let i = 0; i < 4; i++) {
+        const x0 = cx + w - (i * 2 * w) / 4, x1 = x0 - (2 * w) / 4;
+        g.quadraticCurveTo((x0 + x1) / 2, by - 6 + (i + squish) % 2 * 4, x1, by);
+      }
+      g.fill();
+      if (white) return c;
+      // 뿔
+      g.fillStyle = dark;
+      g.beginPath(); g.moveTo(cx - 14, by - h + 8); g.lineTo(cx - 20, by - h - 6); g.lineTo(cx - 8, by - h + 4); g.fill();
+      g.beginPath(); g.moveTo(cx + 14, by - h + 8); g.lineTo(cx + 20, by - h - 6); g.lineTo(cx + 8, by - h + 4); g.fill();
+      // 큰 눈
+      const ey = by - h * 0.62;
+      g.fillStyle = '#fff';
+      g.beginPath(); g.ellipse(cx, ey, 11, 10 - squish, 0, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#e8243c';
+      g.beginPath(); g.arc(cx, ey + 1, 5.5, 0, Math.PI * 2); g.fill();
+      g.fillStyle = '#000';
+      g.beginPath(); g.arc(cx, ey + 1, 2.5, 0, Math.PI * 2); g.fill();
+      // 입과 이빨
+      const my = by - h * 0.25;
+      g.fillStyle = '#2a0a12';
+      g.beginPath(); g.ellipse(cx, my, 13, 5 + squish * 1.5, 0, 0, Math.PI); g.fill();
+      g.fillStyle = '#fff';
+      for (let i = -2; i <= 2; i++) {
+        g.beginPath(); g.moveTo(cx + i * 5 - 2, my); g.lineTo(cx + i * 5 + 2, my); g.lineTo(cx + i * 5, my + 4); g.fill();
+      }
+      return c;
+    }
+    function shaded(src, a) {
+      const c = document.createElement('canvas');
+      c.width = c.height = TEX;
+      const g = c.getContext('2d');
+      g.drawImage(src, 0, 0);
+      g.globalCompositeOperation = 'source-atop';
+      g.fillStyle = `rgba(0,0,0,${a})`;
+      g.fillRect(0, 0, TEX, TEX);
+      return c;
+    }
+    const frames = [frame(0, false), frame(1, false)];
+    return {
+      frames: frames.map(f => Array.from({ length: SHADES }, (_, i) => shaded(f, (i / SHADES) * 0.85))),
+      white: frame(0, true),
+    };
+  }
+
+  // ---------- 게임 시작 ----------
+  function newGame() {
+    L = LEVELS[level];
+    theme = L.theme;
+    generate(L.size);
+    wallTex = makeWallTexture(theme);
+    exitTex = exitTex || makeExitTexture();
+    monTex = makeMonsterTextures(L.mcol);
+    posX = 1.5; posY = 1.5;
+    if (G[1][2] === 0) { dirX = 1; dirY = 0; } else { dirX = 0; dirY = 1; }
+    planeX = -dirY * FOV_PLANE; planeY = dirX * FOV_PLANE;
+    bob = 0; dist = 0;
+    seen = new Set();
+    reveal();
+    startTime = null; endTime = null; state = 'play';
+    hp = 100; kills = 0;
+    fireCd = recoil = flash = hurtFlash = hitMark = 0;
+    spawnMonsters();
+    field = distField(1, 1); fieldTimer = 0;
+    overlay.classList.remove('show');
+    document.querySelectorAll('.levels button').forEach(b =>
+      b.classList.toggle('active', b.dataset.level === level));
+    timeEl.textContent = '0.0';
+    updateHud();
+    showToast(isTouch ? '화면을 끌어 이동 · 발사 버튼으로 몬스터를 물리치세요' : 'WASD로 이동 · 마우스 오른쪽 버튼으로 발사 · 초록색 출구를 찾으세요');
+  }
+
+  // 출발점에서 멀리 떨어진 칸에 몬스터 배치
+  function spawnMonsters() {
+    const f = distField(1, 1);
+    const spots = [];
+    for (let y = 1; y < GH; y += 2)
+      for (let x = 1; x < GW; x += 2)
+        if (f[y * GW + x] >= 8 && !(x === exitX && y === exitY)) spots.push([x, y]);
+    for (let i = spots.length - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0; [spots[i], spots[j]] = [spots[j], spots[i]];
+    }
+    monsters = spots.slice(0, L.mons).map(([x, y]) => ({
+      x: x + 0.5, y: y + 0.5, hp: L.mhp, tx: null, ty: null, px: x, py: y,
+      atk: 0, hurt: 0, dead: false, deadT: 0, phase: Math.random() * 6, chasing: false,
+    }));
+  }
+
+  let toastTimer;
+  function showToast(text, ms = 3500) {
+    toast.textContent = text;
+    toast.classList.remove('hide');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.add('hide'), ms);
+  }
+
+  function reveal() {
+    const cx = Math.floor(posX), cy = Math.floor(posY);
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -1; dx <= 1; dx++) seen.add((cy + dy) * 1000 + (cx + dx));
+  }
+
+  function updateHud() {
+    hpFill.style.width = Math.max(0, hp) + '%';
+    document.getElementById('monLeft').textContent = monsters.filter(m => !m.dead).length;
+    document.getElementById('kills').textContent = kills;
+  }
+
+  // ---------- 입력 ----------
+  const keys = new Set();
+  const pad = { up: 0, down: 0, left: 0, right: 0 };
+  const joy = { active: false, id: null, ox: 0, oy: 0, f: 0, t: 0, moved: false, t0: 0 };
+  let fireHeld = false, rightHeld = false;
+
+  const KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'w', 'a', 's', 'd', 'q', 'e', ' '];
+
+  // 마우스 오른쪽 버튼 = 발사 (누르고 있으면 연사)
+  view.addEventListener('mousedown', e => { if (e.button === 2) { e.preventDefault(); rightHeld = true; shoot(); } });
+  window.addEventListener('mouseup', e => { if (e.button === 2) rightHeld = false; });
+  board.addEventListener('contextmenu', e => e.preventDefault());
+  window.addEventListener('keydown', e => {
+    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
+    if (KEYS.includes(k)) { e.preventDefault(); keys.add(k); }
+    else if (k === 'r') newGame();
+    else if (k === 'm') toggleMap();
+    else if (k === 'Enter' && state !== 'play') newGame();
+  });
+  window.addEventListener('keyup', e => keys.delete(e.key.length === 1 ? e.key.toLowerCase() : e.key));
+  window.addEventListener('blur', () => { keys.clear(); fireHeld = rightHeld = false; });
+
+  // 화면 끌기 = 가상 조이스틱 (위아래: 앞뒤, 좌우: 회전), 휴대폰에서 짧게 탭 = 발사
+  view.addEventListener('pointerdown', e => {
+    if (joy.active || (e.pointerType === 'mouse' && e.button !== 0)) return;
+    try { view.setPointerCapture(e.pointerId); } catch (err) {}
+    const r = board.getBoundingClientRect();
+    Object.assign(joy, { active: true, id: e.pointerId, ox: e.clientX, oy: e.clientY, f: 0, t: 0, moved: false, t0: performance.now() });
+    joyEl.style.left = (e.clientX - r.left) + 'px';
+    joyEl.style.top = (e.clientY - r.top) + 'px';
+    knob.style.transform = '';
+  });
+  view.addEventListener('pointermove', e => {
+    if (!joy.active || e.pointerId !== joy.id) return;
+    let dx = e.clientX - joy.ox, dy = e.clientY - joy.oy;
+    const len = Math.hypot(dx, dy), max = 45;
+    if (len > 8 && !joy.moved) { joy.moved = true; joyEl.classList.add('show'); }
+    if (!joy.moved) return;
+    if (len > max) { dx = dx / len * max; dy = dy / len * max; }
+    knob.style.transform = `translate(${dx}px, ${dy}px)`;
+    const dead = 6;
+    joy.f = Math.abs(dy) < dead ? 0 : -dy / max;
+    joy.t = Math.abs(dx) < dead ? 0 : dx / max;
+  });
+  const endJoy = e => {
+    if (e.pointerId !== joy.id) return;
+    if (!joy.moved && e.type === 'pointerup' && e.pointerType !== 'mouse' && performance.now() - joy.t0 < 350) shoot();
+    joy.active = false; joy.id = null; joy.f = joy.t = 0;
+    joyEl.classList.remove('show');
+  };
+  view.addEventListener('pointerup', endJoy);
+  view.addEventListener('pointercancel', endJoy);
+
+  document.querySelectorAll('.pad button').forEach(btn => {
+    const d = btn.dataset.dir;
+    const on = e => { e.preventDefault(); pad[d] = 1; btn.classList.add('held'); };
+    const off = () => { pad[d] = 0; btn.classList.remove('held'); };
+    btn.addEventListener('pointerdown', on);
+    ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev => btn.addEventListener(ev, off));
+    btn.addEventListener('contextmenu', e => e.preventDefault());
+  });
+  const fireBtn = document.getElementById('fireBtn');
+  fireBtn.addEventListener('pointerdown', e => { e.preventDefault(); fireHeld = true; fireBtn.classList.add('held'); shoot(); });
+  ['pointerup', 'pointerleave', 'pointercancel'].forEach(ev =>
+    fireBtn.addEventListener(ev, () => { fireHeld = false; fireBtn.classList.remove('held'); }));
+  fireBtn.addEventListener('contextmenu', e => e.preventDefault());
+
+  function toggleMap() {
+    showMap = !showMap;
+    mini.classList.toggle('hide', !showMap);
+    document.getElementById('mapBtn').classList.toggle('on', showMap);
+    resize();
+    try { localStorage.setItem('maze3d-map', showMap ? '1' : '0'); } catch (e) {}
+  }
+  const soundBtn = document.getElementById('soundBtn');
+  function setSoundIcon() { soundBtn.textContent = soundOn ? '🔊' : '🔇'; }
+  soundBtn.addEventListener('click', e => {
+    soundOn = !soundOn; setSoundIcon(); e.currentTarget.blur();
+    try { localStorage.setItem('maze3d-sound', soundOn ? '1' : '0'); } catch (err) {}
+  });
+  setSoundIcon();
+
+  // ---------- 발사 ----------
+  // 화면 가운데(조준점)에 보이는 가장 가까운 몬스터를 맞힘. 벽 뒤는 못 맞힘
+  function shoot() {
+    if (state !== 'play' || fireCd > 0) return;
+    if (startTime === null) startTime = performance.now();
+    fireCd = FIRE_COOLDOWN;
+    recoil = 1; flash = 0.07;
+    SFX.shoot();
+    const W = view.width, H = view.height;
+    const inv = 1 / (planeX * dirY - dirX * planeY);
+    let best = null, bestD = Infinity;
+    for (const m of monsters) {
+      if (m.dead) continue;
+      const sx = m.x - posX, sy = m.y - posY;
+      const tX = inv * (dirY * sx - dirX * sy);
+      const tY = inv * (-planeY * sx + planeX * sy);
+      if (tY <= 0.1) continue;
+      const screenX = (W / 2) * (1 + tX / tY);
+      const size = (H / tY) * 0.8;
+      if (Math.abs(screenX - W / 2) < size * 0.38 && tY < zbuf[(W / 2) | 0] + 0.3 && tY < bestD) { best = m; bestD = tY; }
+    }
+    if (best) {
+      best.hp--;
+      best.hurt = 0.12;
+      best.chasing = true;
+      hitMark = 0.15;
+      if (best.hp <= 0) {
+        best.dead = true; best.deadT = 0; kills++;
+        SFX.die();
+        updateHud();
+        if (monsters.every(m => m.dead)) showToast('🎯 몬스터를 모두 물리쳤어요! 출구로 가세요', 3000);
+      } else SFX.hit();
+    }
+  }
+
+  // ---------- 이동 & 충돌 ----------
+  function free(x, y) {
+    for (const [ox, oy] of [[-RADIUS, -RADIUS], [RADIUS, -RADIUS], [-RADIUS, RADIUS], [RADIUS, RADIUS]]) {
+      if (G[Math.floor(y + oy)][Math.floor(x + ox)] !== 0) return false;
+    }
+    return true;
+  }
+
+  function update(dt) {
+    fireCd = Math.max(0, fireCd - dt);
+    recoil = Math.max(0, recoil - dt * 7);
+    flash = Math.max(0, flash - dt);
+    hurtFlash = Math.max(0, hurtFlash - dt * 2.5);
+    hitMark = Math.max(0, hitMark - dt);
+    cross.classList.toggle('hit', hitMark > 0);
+    for (const m of monsters) if (m.dead) m.deadT += dt;
+    if (state !== 'play') return;
+
+    const k = n => keys.has(n) ? 1 : 0;
+    if (k(' ') || fireHeld || rightHeld) shoot();
+    // W 앞 · S 뒤 · A 왼쪽 회전 · D 오른쪽 회전 (방향키도 같음) · Q/E 옆걸음
+    const fwd = Math.max(-1, Math.min(1, k('ArrowUp') + k('w') - k('ArrowDown') - k('s') + pad.up - pad.down + joy.f));
+    const turn = Math.max(-1, Math.min(1, k('ArrowRight') + k('d') - k('ArrowLeft') - k('a') + pad.right - pad.left + joy.t));
+    const strafe = k('e') - k('q');
+
+    if (turn) {
+      const a = turn * TURN_SPEED * dt, c = Math.cos(a), s = Math.sin(a);
+      [dirX, dirY] = [dirX * c - dirY * s, dirX * s + dirY * c];
+      [planeX, planeY] = [planeX * c - planeY * s, planeX * s + planeY * c];
+    }
+    if (fwd || strafe) {
+      if (startTime === null) startTime = performance.now();
+      const sp = MOVE_SPEED * dt;
+      const pl = Math.hypot(planeX, planeY);
+      const mx = (dirX * fwd + planeX / pl * strafe) * sp;
+      const my = (dirY * fwd + planeY / pl * strafe) * sp;
+      const ox = posX, oy = posY;
+      if (free(posX + mx, posY)) posX += mx;
+      if (free(posX, posY + my)) posY += my;
+      const moved = Math.hypot(posX - ox, posY - oy);
+      dist += moved;
+      bob += moved * 9;
+      reveal();
+      if (Math.floor(posX) === exitX && Math.floor(posY) === exitY) return finish();
+    }
+    if (startTime !== null) updateMonsters(dt);
+  }
+
+  // ---------- 몬스터 행동 ----------
+  // 가까우면 미로 길을 따라 쫓아오고, 멀면 통로를 어슬렁거림. 닿으면 공격
+  function updateMonsters(dt) {
+    fieldTimer -= dt;
+    if (fieldTimer <= 0) { field = distField(Math.floor(posX), Math.floor(posY)); fieldTimer = 0.25; }
+    for (const m of monsters) {
+      if (m.dead) continue;
+      m.phase += dt * 6;
+      m.hurt = Math.max(0, m.hurt - dt);
+      const tx = Math.floor(m.x), ty = Math.floor(m.y);
+      const d = field[ty * GW + tx];
+      const wasChasing = m.chasing;
+      m.chasing = d >= 0 && d <= CHASE_RANGE;
+      if (m.chasing && !wasChasing) SFX.growl();
+      const toP = Math.hypot(posX - m.x, posY - m.y);
+
+      let gx, gy;
+      if (m.chasing && d <= 1) { gx = posX; gy = posY; }
+      else if (m.chasing) {
+        // 플레이어 쪽으로 한 걸음 더 가까운 이웃 타일로
+        if (m.tx === null || Math.hypot(m.tx + 0.5 - m.x, m.ty + 0.5 - m.y) < 0.08 || field[m.ty * GW + m.tx] >= d) {
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+            const nx = tx + dx, ny = ty + dy;
+            if (G[ny][nx] === 0 && field[ny * GW + nx] === d - 1) { m.tx = nx; m.ty = ny; break; }
+          }
+        }
+        gx = m.tx + 0.5; gy = m.ty + 0.5;
+      } else {
+        // 어슬렁: 막다른 길이 아니면 왔던 길로 돌아가지 않음
+        if (m.tx === null || Math.hypot(m.tx + 0.5 - m.x, m.ty + 0.5 - m.y) < 0.08) {
+          const opts = [[1, 0], [-1, 0], [0, 1], [0, -1]]
+            .map(([dx, dy]) => [tx + dx, ty + dy])
+            .filter(([nx, ny]) => G[ny][nx] === 0);
+          const fwdOpts = opts.filter(([nx, ny]) => !(nx === m.px && ny === m.py));
+          const pick = (fwdOpts.length ? fwdOpts : opts)[(Math.random() * (fwdOpts.length || opts.length)) | 0];
+          m.px = tx; m.py = ty;
+          [m.tx, m.ty] = pick;
+        }
+        gx = m.tx + 0.5; gy = m.ty + 0.5;
+      }
+
+      if (toP > 0.6) {
+        const vx = gx - m.x, vy = gy - m.y, len = Math.hypot(vx, vy);
+        if (len > 0.001) {
+          const sp = Math.min(len, L.mspeed * (m.chasing ? 1 : 0.55) * dt * (m.hurt > 0 ? 0.3 : 1));
+          m.x += vx / len * sp; m.y += vy / len * sp;
+        }
+      }
+      // 공격
+      m.atk = Math.max(0, m.atk - dt);
+      if (toP < 0.75 && m.atk === 0) {
+        m.atk = 0.9;
+        hp -= L.dmg;
+        hurtFlash = 1;
+        SFX.hurt();
+        updateHud();
+        if (hp <= 0) return die();
+      }
+    }
+  }
+
+  function showEnd({ icon, title, sub, time, detail, record, button }) {
+    document.getElementById('bigIcon').textContent = icon;
+    document.getElementById('msg').textContent = title;
+    document.getElementById('sub').textContent = sub;
+    document.getElementById('finalTime').textContent = time;
+    document.getElementById('detail').textContent = detail;
+    document.getElementById('record').textContent = record;
+    document.getElementById('again').textContent = button;
+    setTimeout(() => overlay.classList.add('show'), 250);
+  }
+
+  function finish() {
+    state = 'won';
+    endTime = performance.now();
+    keys.clear(); fireHeld = rightHeld = false;
+    const secs = (endTime - startTime) / 1000;
+    const key = 'maze3d-best-' + level;
+    let best = null;
+    try { best = parseFloat(localStorage.getItem(key)); } catch (e) {}
+    const isRecord = !best || secs < best;
+    if (isRecord) { try { localStorage.setItem(key, secs.toFixed(2)); } catch (e) {} }
+    timeEl.textContent = secs.toFixed(1);
+    SFX.win();
+    showEnd({
+      icon: '🎉',
+      title: CHEERS[(Math.random() * CHEERS.length) | 0],
+      sub: '미로를 탈출했어요',
+      time: formatTime(secs),
+      detail: `난이도 ${L.name} · 몬스터 ${kills}/${monsters.length} 처치 · 남은 체력 ${hp}`,
+      record: isRecord ? (best ? '🏆 최고 기록 갱신!' : '🏆 첫 기록 달성!') : `최고 기록: ${formatTime(best)}`,
+      button: '새 미로 도전',
+    });
+  }
+
+  function die() {
+    state = 'dead';
+    endTime = performance.now();
+    keys.clear(); fireHeld = rightHeld = false;
+    hp = 0; updateHud();
+    SFX.lose();
+    showEnd({
+      icon: '💀',
+      title: '몬스터에게 당했어요',
+      sub: '다시 도전해 보세요!',
+      time: formatTime((endTime - startTime) / 1000),
+      detail: `난이도 ${L.name} · 몬스터 ${kills}/${monsters.length} 처치`,
+      record: '',
+      button: '다시 도전',
+    });
+  }
+
+  function formatTime(s) {
+    if (s < 60) return s.toFixed(1) + '초';
+    const m = Math.floor(s / 60);
+    return `${m}분 ${(s - m * 60).toFixed(1)}초`;
+  }
+
+  // ---------- 화면 크기 ----------
+  function resize() {
+    const r = board.getBoundingClientRect();
+    const scale = Math.min(1, 480 / Math.max(1, r.width));
+    view.width = Math.max(160, Math.round(r.width * scale));
+    view.height = Math.max(100, Math.round(r.height * scale));
+    zbuf = new Float32Array(view.width);
+    const dpr = window.devicePixelRatio || 1;
+    const mr = mini.getBoundingClientRect();
+    mini.width = Math.round(mr.width * dpr);
+    mini.height = Math.round(mr.height * dpr);
+  }
+
+  // ---------- 레이캐스팅 렌더링 ----------
+  function render() {
+    const W = view.width, H = view.height;
+    const horizon = (H / 2 + Math.sin(bob) * H * 0.012) | 0;
+    ctx.imageSmoothingEnabled = false;
+
+    let g = ctx.createLinearGradient(0, 0, 0, horizon);
+    g.addColorStop(0, theme.ceil[0]); g.addColorStop(1, theme.ceil[1]);
+    ctx.fillStyle = g; ctx.fillRect(0, 0, W, horizon);
+    g = ctx.createLinearGradient(0, horizon, 0, H);
+    g.addColorStop(0, theme.floor[1]); g.addColorStop(1, theme.floor[0]);
+    ctx.fillStyle = g; ctx.fillRect(0, horizon, W, H - horizon);
+
+    const glow = 0.5 + 0.5 * Math.sin(performance.now() / 280);
+    for (let x = 0; x < W; x++) {
+      const camX = 2 * x / W - 1;
+      const rdx = dirX + planeX * camX, rdy = dirY + planeY * camX;
+      let mapX = Math.floor(posX), mapY = Math.floor(posY);
+      const ddx = Math.abs(1 / rdx), ddy = Math.abs(1 / rdy);
+      let stepX, stepY, sdx, sdy;
+      if (rdx < 0) { stepX = -1; sdx = (posX - mapX) * ddx; } else { stepX = 1; sdx = (mapX + 1 - posX) * ddx; }
+      if (rdy < 0) { stepY = -1; sdy = (posY - mapY) * ddy; } else { stepY = 1; sdy = (mapY + 1 - posY) * ddy; }
+      let side = 0, hit = 0;
+      for (let i = 0; i < 128 && !hit; i++) {
+        if (sdx < sdy) { sdx += ddx; mapX += stepX; side = 0; }
+        else { sdy += ddy; mapY += stepY; side = 1; }
+        hit = G[mapY][mapX];
+      }
+      const perp = Math.max(0.0001, side === 0 ? sdx - ddx : sdy - ddy);
+      zbuf[x] = perp;
+      const lineH = H / perp;
+      const top = horizon - lineH / 2;
+
+      let wallX = side === 0 ? posY + perp * rdy : posX + perp * rdx;
+      wallX -= Math.floor(wallX);
+      let texX = (wallX * TEX) | 0;
+      if ((side === 0 && rdx < 0) || (side === 1 && rdy > 0)) texX = TEX - texX - 1;
+
+      ctx.drawImage(hit === 2 ? exitTex : wallTex, texX, 0, 1, TEX, x, top, 1, lineH);
+
+      let shade = Math.min(0.92, perp / 9) + (side ? 0.12 : 0);
+      if (hit === 2) shade = Math.max(0, shade * 0.4 - glow * 0.1);
+      if (shade > 0) {
+        ctx.fillStyle = `rgba(0,0,0,${shade})`;
+        ctx.fillRect(x, top, 1, lineH);
+      }
+    }
+
+    renderMonsters(W, H, horizon);
+
+    // 가장자리 비네트
+    const v = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, Math.max(W, H) * 0.75);
+    v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.55)');
+    ctx.fillStyle = v; ctx.fillRect(0, 0, W, H);
+
+    renderGun(W, H);
+
+    // 맞았을 때 붉은 화면
+    if (hurtFlash > 0) {
+      const r = ctx.createRadialGradient(W / 2, H / 2, H * 0.2, W / 2, H / 2, Math.max(W, H) * 0.7);
+      r.addColorStop(0, `rgba(255,0,0,${hurtFlash * 0.15})`);
+      r.addColorStop(1, `rgba(255,0,0,${hurtFlash * 0.55})`);
+      ctx.fillStyle = r; ctx.fillRect(0, 0, W, H);
+    }
+  }
+
+  // 몬스터를 먼 것부터 그리되, 벽보다 뒤에 있는 세로줄은 건너뜀
+  function renderMonsters(W, H, horizon) {
+    const inv = 1 / (planeX * dirY - dirX * planeY);
+    const list = [];
+    for (const m of monsters) {
+      if (m.dead && m.deadT > 0.5) continue;
+      const sx = m.x - posX, sy = m.y - posY;
+      const tY = inv * (-planeY * sx + planeX * sy);
+      if (tY <= 0.15) continue;
+      list.push({ m, tX: inv * (dirY * sx - dirX * sy), tY });
+    }
+    list.sort((a, b) => b.tY - a.tY);
+    for (const { m, tX, tY } of list) {
+      const screenX = (W / 2) * (1 + tX / tY);
+      const full = H / tY;
+      let size = full * 0.8;
+      let alpha = 1;
+      if (m.dead) { const p = m.deadT / 0.5; size *= 1 - p * 0.7; alpha = 1 - p; }
+      const bounce = m.dead ? 0 : Math.abs(Math.sin(m.phase)) * full * 0.04;
+      const bottom = horizon + full / 2 - bounce;
+      const top = bottom - size;
+      const left = screenX - size / 2;
+      let tex;
+      if (m.hurt > 0 || m.dead) tex = monTex.white;
+      else tex = monTex.frames[(Math.floor(m.phase / 3) % 2)][Math.min(SHADES - 1, Math.floor(tY / 9 * SHADES))];
+      ctx.globalAlpha = alpha;
+      const x0 = Math.max(0, Math.floor(left)), x1 = Math.min(W - 1, Math.floor(left + size));
+      for (let x = x0; x <= x1; x++) {
+        if (tY >= zbuf[x]) continue;
+        const texX = Math.min(TEX - 1, Math.floor((x - left) / size * TEX));
+        ctx.drawImage(tex, texX, 0, 1, TEX, x, top, 1, size);
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // 총: 직접 그린 에너지 권총 (걸을 때 흔들림, 쏠 때 반동·불꽃)
+  function renderGun(W, H) {
+    const u = H / 110;
+    const cx = W / 2 + Math.sin(bob * 0.5) * 3 * u;
+    const by = H + Math.abs(Math.cos(bob * 0.5)) * 2 * u + recoil * 6 * u;
+    const R = (x, y, w, h, c) => { ctx.fillStyle = c; ctx.fillRect(cx + x * u, by + y * u, w * u, h * u); };
+    // 총구 불꽃
+    if (flash > 0) {
+      const fx = cx, fy = by - 44 * u;
+      const fg = ctx.createRadialGradient(fx, fy, 0, fx, fy, 16 * u);
+      fg.addColorStop(0, 'rgba(255,255,220,1)');
+      fg.addColorStop(0.4, 'rgba(120,230,255,.9)');
+      fg.addColorStop(1, 'rgba(60,160,255,0)');
+      ctx.fillStyle = fg;
+      ctx.beginPath(); ctx.arc(fx, fy, 16 * u, 0, Math.PI * 2); ctx.fill();
+    }
+    // 팔(소매)
+    R(-16, -14, 32, 14, '#2c3a4a');
+    R(-16, -14, 32, 3, '#3b4d61');
+    // 손
+    R(-10, -22, 20, 10, '#d9a27a');
+    R(-10, -22, 20, 2, '#e8b893');
+    // 몸체
+    R(-9, -34, 18, 14, '#4a5260');
+    R(-9, -34, 18, 3, '#6b7584');
+    R(-9, -23, 18, 2, '#2e333c');
+    // 에너지 창
+    const pulse = 0.6 + 0.4 * Math.sin(performance.now() / 150);
+    R(-5, -31, 10, 5, `rgba(80,220,255,${0.5 + pulse * 0.5})`);
+    // 총열
+    R(-4, -44, 8, 11, '#3a4049');
+    R(-4, -44, 2, 11, '#5c6573');
+    R(-5, -46, 10, 3, '#7ee8ff');
+  }
+
+  function renderMini() {
+    if (!showMap) return;
+    const S = mini.width;
+    mctx.clearRect(0, 0, S, S);
+    const cell = S / GW;
+    for (let y = 0; y < GH; y++) {
+      for (let x = 0; x < GW; x++) {
+        const t = G[y][x];
+        if (!seen.has(y * 1000 + x) && t !== 2) continue;
+        mctx.fillStyle = t === 0 ? 'rgba(255,255,255,.14)' : t === 2 ? '#3cffb0' : 'rgba(220,210,190,.85)';
+        mctx.fillRect(x * cell, y * cell, Math.ceil(cell), Math.ceil(cell));
+      }
+    }
+    // 지나간 곳 근처에 있는 몬스터만 표시
+    mctx.fillStyle = '#ff4d4d';
+    for (const m of monsters) {
+      if (m.dead || !seen.has(Math.floor(m.y) * 1000 + Math.floor(m.x))) continue;
+      mctx.beginPath(); mctx.arc(m.x * cell, m.y * cell, Math.max(2, cell * 0.4), 0, Math.PI * 2); mctx.fill();
+    }
+    const px = posX * cell, py = posY * cell, a = Math.atan2(dirY, dirX), r = Math.max(3, cell * 0.9);
+    mctx.fillStyle = '#f2b544';
+    mctx.beginPath();
+    mctx.moveTo(px + Math.cos(a) * r * 1.4, py + Math.sin(a) * r * 1.4);
+    mctx.lineTo(px + Math.cos(a + 2.5) * r, py + Math.sin(a + 2.5) * r);
+    mctx.lineTo(px + Math.cos(a - 2.5) * r, py + Math.sin(a - 2.5) * r);
+    mctx.closePath();
+    mctx.fill();
+  }
+
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    update(dt);
+    if (state === 'play' && startTime !== null) timeEl.textContent = ((now - startTime) / 1000).toFixed(1);
+    render();
+    renderMini();
+    requestAnimationFrame(loop);
+  }
+
+  // ---------- 버튼 ----------
+  document.querySelectorAll('.levels button').forEach(b =>
+    b.addEventListener('click', () => {
+      level = b.dataset.level;
+      try { localStorage.setItem('maze3d-level', level); } catch (e) {}
+      newGame();
+      b.blur();
+    }));
+  document.getElementById('newBtn').addEventListener('click', e => { newGame(); e.currentTarget.blur(); });
+  document.getElementById('mapBtn').addEventListener('click', e => { toggleMap(); e.currentTarget.blur(); });
+  document.getElementById('again').addEventListener('click', e => { newGame(); e.currentTarget.blur(); });
+
+  if (!showMap) { mini.classList.add('hide'); document.getElementById('mapBtn').classList.remove('on'); }
+  window.addEventListener('resize', resize);
+  new ResizeObserver(resize).observe(board);
+  resize();
+  newGame();
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
